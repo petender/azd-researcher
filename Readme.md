@@ -8,6 +8,16 @@ Once the Azure resources got deployed, you can trigger the Research process from
 
 From there, the full research process include the intermediate Bing Search Grounding reasoning steps are written to individual MarkDown files, which can be downloaded from the web page, as well as getting stored in the deployed Azure Blob Storage Account.
 
+<div style="background: lightgreen; 
+            font-size: 14px; 
+            color: black;
+            padding: 5px; 
+            border: 1px solid lightgray; 
+            margin: 5px;">
+
+**Note:** The OpenAI Researcher Large Language Model is considered a more expensive LLM. Each Research Trigger is estimated as a $10 charge on Azure Cognitive Services, and a $1 charge on Azure Bing Search service. Take this charge into account when using this demo scenario!! 
+</div>
+
 ## ⬇️ Installation
 - [Azure Developer CLI - AZD](https://learn.microsoft.com/en-us/azure/developer/azure-developer-cli/install-azd)
     - When installing AZD, the above the following tools will be installed on your machine as well, if not already installed:
