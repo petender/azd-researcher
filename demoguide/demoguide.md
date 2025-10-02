@@ -11,6 +11,16 @@
 
 This scenario deploys an Azure AI Foundry Project architecture, using Azure AI Foundry Agent Service, OpenAI Deep-Research LLM and Bing Search Grounding. The research web app offers 2 predefined use cases to perform research on, but you can also provide your own description for the use case. Once the process kicks off, it shows real-time processing logs on the web app, as well as saving each iteration of the research reasoning in an individual Markdown file. 
 
+<div style="background: lightgreen; 
+            font-size: 14px; 
+            color: black;
+            padding: 5px; 
+            border: 1px solid lightgray; 
+            margin: 5px;">
+
+**Note:** The OpenAI Researcher Large Language Model is considered a more expensive LLM. Each Research Trigger is estimated as a $10 charge on Azure Cognitive Services, and a $1 charge on Azure Bing Search service. Take this charge into account when using this demo scenario!! 
+</div>
+
 Once the research Agent task completes, it compiles a summary MarkDown document with the observations and results of the research. 
 
 All process and summary files can be downloaded from the webapp, but are also stored in an Azure Storage Account Blob Storage.
