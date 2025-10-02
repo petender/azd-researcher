@@ -1,0 +1,17 @@
+name: tdd-azd-researcher
+metadata:
+  template: tdd-azd-researcher@1.0.0
+
+
+infra:
+  bicep:
+    parameters:
+      projectEndpoint: ${PROJECT_ENDPOINT}
+      storageAccountKey: ${AZURE_STORAGE_ACCOUNT_KEY}
+
+
+services:
+  web:
+    project: src
+    language: py
+    host: appservice

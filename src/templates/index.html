@@ -1,0 +1,302 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Deep Research Web</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Arial, sans-serif; max-width: 900px; margin: 40px auto; padding: 0 16px; color:#111 }
+    h1 { color:#0b5; }
+    button { font-size: 1.1rem; padding: 12px 20px; border-radius: 6px; border: none; background: #0066cc; color: white; cursor: pointer }
+    button:disabled { background: #999 }
+    .status { margin-top: 16px; padding: 12px; background: #f7f7f7; border-radius: 6px }
+    .status-bar { font-weight: 700; background: #fff; padding: 8px 12px; border-radius: 6px; display:inline-block }
+    .status-bar.running { color: #000; }
+    .status-bar.completed { color: green; }
+    .log { white-space: pre-wrap; background:#111; color:#dfe; padding:12px; border-radius:6px; margin-top:12px; max-height:420px; overflow:auto }
+    footer { margin-top:28px; color:#666; font-size:0.9rem }
+    .run-id { margin-top: 12px }
+    .muted { color:#666; font-size:0.9rem }
+    .research-content { margin: 20px 0; }
+    .research-content textarea { width: 100%; min-height: 200px; padding: 12px; border: 1px solid #ccc; border-radius: 6px; font-family: inherit; font-size: 0.95rem; line-height: 1.4; resize: vertical; }
+    .research-content label { display: block; margin-bottom: 8px; font-weight: 600; }
+    .preset-buttons { margin: 8px 0; }
+    .preset-buttons button { margin-right: 8px; margin-bottom: 8px; font-size: 0.9rem; padding: 8px 12px; background: #f0f0f0; color: #333; }
+    .preset-buttons button:hover { background: #e0e0e0; }
+    .char-count { text-align: right; font-size: 0.8rem; color: #666; margin-top: 4px; }
+  </style>
+</head>
+<body>
+  <h1>Deep Research Web</h1>
+  <p>Enter your research description below and click "Start Research" to begin a Deep Research run. It takes about <b>a minute for logs to show up.</b> The job runs in the background and writes logs to the <code>Azure Storage Account/Research-Dependencies</code> folder.</p> 
+  <p>Processing log files can also be downloaded from the links below once they appear.</p>
+
+  <div class="research-content">
+    <label for="researchTextarea">Research Description:</label>
+    <div class="preset-buttons">
+      <button type="button" onclick="loadPreset('technology')">Technology Trends</button>
+      <button type="button" onclick="loadPreset('market')">Market Research</button>
+      <button type="button" onclick="clearContent()">Clear</button>
+    </div>
+    <textarea id="researchTextarea" placeholder="Enter your research question or topic description here..."></textarea>
+    <div class="char-count">
+      <span id="charCount">0</span> characters
+    </div>
+  </div>
+
+  <button id="startBtn">Start Research</button>
+
+  <div class="run-id">
+    Current run id: <span id="currentRunId" class="muted">(none)</span>
+    &nbsp; | &nbsp;
+    View run id: <input id="runIdField" placeholder="paste run id to view" style="width:280px"/>
+    <button id="viewRunBtn">View</button>
+  </div>
+
+  <div class="status">
+    Status: <span id="statusBar" class="status-bar">Loading…</span>
+  </div>
+
+  <div id="logContainer"></div>
+  <div id="blobs" style="margin-top:12px"></div>
+
+  <footer>
+    Note: This is an experimental AI Deep Researcher application written in Python - using Azure AI Foundry, Grounding with Bing Search and Azure AI Foundry Agent Service. 
+    <br><small><a href="/debug" target="_blank">Debug Info</a> (for troubleshooting)</small>
+  </footer>
+
+  <script>
+    let polling = false;
+
+    // Preset research content templates
+    const presets = {
+      technology: `Research the latest technology trends in artificial intelligence and machine learning for 2025. Focus on:
+1. Emerging AI technologies and their potential business applications
+2. Industry adoption rates and key drivers
+3. Challenges and barriers to implementation
+4. Regional differences in AI adoption
+5. Skills gap analysis and training requirements
+6. Predictions for the next 2-3 years
+7. Key players and market dynamics
+Provide a comprehensive report with citations and actionable insights.`,
+      
+      market: `Conduct market research on cloud computing services and infrastructure. Analyze:
+1. Current market size and growth projections
+2. Key competitors and their market share
+3. Pricing trends and strategies
+4. Customer satisfaction and pain points
+5. Emerging technologies affecting the market
+6. Regional market variations
+7. Future opportunities and threats
+Compile findings into an executive summary with recommendations.`
+    };
+
+    function loadPreset(type) {
+      const textarea = document.getElementById('researchTextarea');
+      if (presets[type]) {
+        textarea.value = presets[type];
+        updateCharCount();
+      }
+    }
+
+    function clearContent() {
+      document.getElementById('researchTextarea').value = '';
+      updateCharCount();
+    }
+
+    function updateCharCount() {
+      const textarea = document.getElementById('researchTextarea');
+      const charCount = document.getElementById('charCount');
+      charCount.textContent = textarea.value.length;
+    }
+
+    function currentRunId() {
+      return localStorage.getItem('run_id') || document.getElementById('runIdField').value || null;
+    }
+
+    async function getStatus() {
+      const runId = currentRunId();
+      const q = runId ? `?run_id=${encodeURIComponent(runId)}` : '';
+      const res = await fetch('/status' + q);
+      if (!res.ok) return {running:false};
+      return res.json();
+    }
+
+    async function fetchLog() {
+      const runId = currentRunId();
+      if (!runId) return '';
+      const res = await fetch('/log?bytes=8000&run_id=' + encodeURIComponent(runId));
+      if (!res.ok) return '';
+      return res.text();
+    }
+
+    async function refresh() {
+      const st = await getStatus();
+      const statusBar = document.getElementById('statusBar');
+      const logContainer = document.getElementById('logContainer');
+      const startBtn = document.getElementById('startBtn');
+      const cur = document.getElementById('currentRunId');
+
+      const runId = currentRunId();
+      cur.textContent = runId || '(none)';
+
+      if (st.state === 'running' || st.status === 'running') {
+        statusBar.textContent = 'Running';
+        statusBar.className = 'status-bar running';
+        startBtn.disabled = true;
+        const log = await fetchLog();
+        logContainer.innerHTML = '<div class="log">' + escapeHtml(log) + '</div>';
+        const el = logContainer.querySelector('.log');
+        if (el) el.scrollTop = el.scrollHeight;
+
+        // detect run folder from log
+        const uploadMatch = log.match(/Uploaded '([^']+)' to container/);
+        let runFolder = null;
+        if (uploadMatch && uploadMatch[1]) runFolder = uploadMatch[1].split('/')[0];
+        const placeholderMatch = log.match(/Placeholder blob created:\\s*([^\\s]+)/);
+        if (!runFolder && placeholderMatch && placeholderMatch[1]) runFolder = placeholderMatch[1].split('/')[0];
+        if (runFolder) fetchBlobs(runFolder);
+      } else if (st.state === 'completed' || st.status === 'completed') {
+        statusBar.textContent = 'Completed';
+        statusBar.className = 'status-bar completed';
+        startBtn.disabled = false;
+        const log = await fetchLog();
+        logContainer.innerHTML = '<div class="log">' + escapeHtml(log) + '</div>';
+        const uploadMatch = log.match(/Uploaded '([^']+)' to container/);
+        let runFolder = null;
+        if (uploadMatch && uploadMatch[1]) runFolder = uploadMatch[1].split('/')[0];
+        const placeholderMatch = log.match(/Placeholder blob created:\\s*([^\\s]+)/);
+        if (!runFolder && placeholderMatch && placeholderMatch[1]) runFolder = placeholderMatch[1].split('/')[0];
+        if (runFolder) fetchBlobs(runFolder);
+      } else if (st.runs) {
+        // summary response when no run_id provided
+        statusBar.textContent = Object.keys(st.runs).length ? 'Multiple runs' : 'Idle';
+        statusBar.className = 'status-bar';
+        startBtn.disabled = false;
+        logContainer.innerHTML = '';
+      } else {
+        statusBar.textContent = 'Idle';
+        statusBar.className = 'status-bar';
+        startBtn.disabled = false;
+        logContainer.innerHTML = '';
+      }
+
+      if ((st.state === 'running' || st.status === 'running') && !polling) {
+        polling = true;
+        pollLoop();
+      }
+    }
+
+    async function pollLoop() {
+      while (true) {
+        const st = await getStatus();
+        await refresh();
+        if (!(st.state === 'running' || st.status === 'running')) {
+          polling = false;
+          break;
+        }
+        await new Promise(r => setTimeout(r, 2500));
+      }
+    }
+
+    async function fetchBlobs(folder) {
+      try {
+        const res = await fetch('/blobs?run_folder=' + encodeURIComponent(folder));
+        if (!res.ok) return;
+        const data = await res.json();
+        const container = document.getElementById('blobs');
+        container.innerHTML = '<h3>Uploaded files</h3>';
+        data.blobs.forEach(b => {
+          const a = document.createElement('a');
+          a.href = '/blob/download?name=' + encodeURIComponent(b.name);
+          a.textContent = b.name.split('/').slice(1).join('/') + (b.size ? ` (${b.size} bytes)` : '');
+          a.target = '_blank';
+          const d = document.createElement('div');
+          d.appendChild(a);
+          container.appendChild(d);
+        });
+      } catch (e) {
+        console.warn('Failed to list blobs', e);
+      }
+    }
+
+    async function startRun() {
+      const researchContent = document.getElementById('researchTextarea').value.trim();
+      
+      if (!researchContent) {
+        alert('Please enter a research description before starting.');
+        return;
+      }
+
+      const btn = document.getElementById('startBtn');
+      btn.disabled = true;
+      btn.textContent = 'Starting…';
+      
+      const payload = {
+        research_content: researchContent
+      };
+
+      try {
+        const resp = await fetch('/start', { 
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify(payload)
+        });
+
+        const data = await resp.json().catch(() => ({}));
+
+        if (resp.status === 202) {
+          if (data.run_id) {
+            localStorage.setItem('run_id', data.run_id);
+            document.getElementById('currentRunId').textContent = data.run_id;
+          }
+          btn.textContent = 'Running…';
+          await refresh();
+        } else {
+          console.error('Start failed:', resp.status, data);
+          alert('Could not start: ' + (data.detail || data.status || resp.status));
+          btn.disabled = false;
+          btn.textContent = 'Start Research';
+          await refresh();
+        }
+      } catch (error) {
+        console.error('Network error:', error);
+        alert('Network error: ' + error.message);
+        btn.disabled = false;
+        btn.textContent = 'Start Research';
+      }
+    }
+
+    document.getElementById('startBtn').addEventListener('click', startRun);
+    document.getElementById('viewRunBtn').addEventListener('click', () => {
+      const v = document.getElementById('runIdField').value.trim();
+      if (v) {
+        localStorage.setItem('run_id', v);
+        document.getElementById('currentRunId').textContent = v;
+        refresh();
+      }
+    });
+
+    // Add character count update
+    document.getElementById('researchTextarea').addEventListener('input', updateCharCount);
+
+    function escapeHtml(str) {
+      if (!str) return '';
+      return str.replace(/[&<>"']/g, function(m) { return ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":"&#39;"})[m]; });
+    }
+
+    // On load, initialize run id and start polling if needed
+    window.addEventListener('load', () => {
+      const cur = localStorage.getItem('run_id');
+      if (cur) document.getElementById('currentRunId').textContent = cur;
+      
+      // Load technology trends preset as default on page load
+      loadPreset('technology');
+      
+      refresh();
+    });
+  </script>
+</body>
+</html>
